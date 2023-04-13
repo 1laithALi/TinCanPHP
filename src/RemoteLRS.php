@@ -65,147 +65,259 @@ class RemoteLRS implements LRSInterface
         }
     }
 
-    protected function sendRequest($method, $resource) {
-        $options = func_num_args() === 3 ? func_get_arg(2) : array();
+//    protected function sendRequest($method, $resource) {
+//        $options = func_num_args() === 3 ? func_get_arg(2) : array();
+//
+//        //
+//        // allow for full path requests, for instance as used by the
+//        // moreStatements method which is based on server root rather
+//        // than the stored endpoint
+//        //
+//        $url = $resource;
+//        if (! preg_match('/^http/', $resource)) {
+//            $url = $this->endpoint . $resource;
+//        }
+//        $http = array(
+//            //
+//            // redirects are not part of the spec so LRSs shouldn't be returning them
+//            //
+//            'max_redirects' => 0,
+//
+//            //
+//            // this is here for some proxy handling
+//            //
+//            'request_fulluri' => 1,
+//
+//            //
+//            // switching this to false causes non-2xx/3xx status codes to throw exceptions
+//            // but we need to handle the "error" status codes ourselves in some cases
+//            //
+//            'ignore_errors' => true,
+//
+//            'method' => $method,
+//            'header' => array(
+//                'X-Experience-API-Version: ' . $this->version
+//            ),
+//        );
+//        if (isset($this->auth)) {
+//            array_push($http['header'], 'Authorization: ' . $this->auth);
+//        }
+//        if (isset($this->proxy)) {
+//            $http['proxy'] = $this->proxy;
+//        }
+//
+//        if (isset($this->headers) && count($this->headers) > 0) {
+//            foreach ($this->headers as $k => $v) {
+//                array_push($http['header'], "$k: $v");
+//            }
+//        }
+//
+//        if (isset($options['headers'])) {
+//            foreach ($options['headers'] as $k => $v) {
+//                array_push($http['header'], "$k: $v");
+//            }
+//        }
+//        if (isset($options['params']) && count($options['params']) > 0) {
+//            $url .= '?' . http_build_query($options['params'], null, '&', PHP_QUERY_RFC3986);
+//        }
+//
+//        if (($method === 'PUT' || $method === 'POST') && isset($options['content'])) {
+//            $http['content'] = $options['content'];
+//            if (is_string($options['content'])) {
+//                array_push($http['header'], 'Content-length: ' . strlen($options['content']));
+//            }
+//        }
+//
+//        $success = false;
+//
+//        //
+//        // errors from fopen are reported to PHP as E_WARNING which prevents us
+//        // from getting a reasonable message, so set an error handler here for
+//        // the immediate call to turn it into an exception, and then restore
+//        // normal handling
+//        //
+//        set_error_handler(
+//            function ($errno, $errstr, $errfile, $errline, array $errcontext) {
+//                // "!== false" is intentional. strpos() can return 0, which is falsey, but returning
+//                // 0 matches our "true" condition. Using strict equality to avoid that confusion.
+//                if ($errno == E_NOTICE && strpos($errstr, 'Array to string conversion') !== false) {
+//                    // The way HHVM handles array comparison results in a Notice being raised in fopen(),
+//                    // but that's expected here and won't affect functionality. We don't want to throw
+//                    // those Notices as Errors. Checking if this is a Notice before looking at the
+//                    // contents of the string to hopefully minimize any performance impact here.
+//                    // See https://github.com/facebook/hhvm/issues/1561 for the "won't fix" from HHVM.
+//
+//                    return true;
+//                }
+//
+//                throw new \ErrorException($errstr, 0, $errno, $errfile, $errline);
+//            }
+//        );
+//
+//        $fp = null;
+//        $response = null;
+//
+//        try {
+//            $context = stream_context_create(array( 'http' => $http ));
+//            $fp = fopen($url, 'rb', false, $context);
+//
+//            if (! $fp) {
+//                $content = "Request failed: $php_errormsg";
+//            }
+//        }
+//        catch (\ErrorException $ex) {
+//            $content = "Request failed: $ex";
+//        }
+//
+//        restore_error_handler();
+//
+//        if ($fp) {
+//            $metadata = stream_get_meta_data($fp);
+//            $content  = stream_get_contents($fp);
+//
+//            $response = $this->_parseMetadata($metadata, $options);
+//
+//            //
+//            // keep a copy of the raw content, the methods expecting
+//            // an LRS response may handle the content, for instance
+//            // querying statements takes the returned value and converts
+//            // it to Statement objects (really StatementsResult but who
+//            // is counting), etc. but a user may want the original raw
+//            // returned content untouched, do the same with the metadata
+//            // because it feels like a good practice
+//            //
+//            $response['_content']  = $content;
+//            $response['_metadata'] = $metadata;
+//
+//            //
+//            // Content-Type won't be set in the case of a 204 (and potentially others)
+//            //
+//            if (isset($response['headers']['contentType']) && $response['headers']['contentType'] === "multipart/mixed") {
+//                $content = $this->_parseMultipart($response['headers']['contentTypeBoundary'], $content);
+//            }
+//
+//            if (($response['status'] >= 200 && $response['status'] < 300) || ($response['status'] === 404 && isset($options['ignore404']) && $options['ignore404'])) {
+//                $success = true;
+//            }
+//            elseif ($response['status'] >= 300 && $response['status'] < 400) {
+//                $content = "Unsupported status code: " . $response['status'] . " (LRS should not redirect)";
+//            }
+//        }
+//
+//        return new LRSResponse($success, $content, $response);
+//    }
 
-        //
-        // allow for full path requests, for instance as used by the
-        // moreStatements method which is based on server root rather
-        // than the stored endpoint
-        //
-        $url = $resource;
-        if (! preg_match('/^http/', $resource)) {
-            $url = $this->endpoint . $resource;
-        }
-        $http = array(
-            //
-            // redirects are not part of the spec so LRSs shouldn't be returning them
-            //
-            'max_redirects' => 0,
+	protected function sendRequest($method, $resource) {
+		$options = func_num_args() === 3 ? func_get_arg(2) : array();
 
-            //
-            // this is here for some proxy handling
-            //
-            'request_fulluri' => 1,
+		//
+		// allow for full path requests, for instance as used by the
+		// moreStatements method which is based on server root rather
+		// than the stored endpoint
+		//
+		$url = $resource;
+		if (! preg_match('/^http/', $resource)) {
+			$url = $this->endpoint . $resource;
+		}
 
-            //
-            // switching this to false causes non-2xx/3xx status codes to throw exceptions
-            // but we need to handle the "error" status codes ourselves in some cases
-            //
-            'ignore_errors' => true,
+		$headers = array(
+			'Authorization: '.$this->auth,
+			'Content-Type: application/json',
+			'X-Experience-API-Version: ' . $this->version
+		);
 
-            'method' => $method,
-            'header' => array(
-                'X-Experience-API-Version: ' . $this->version
-            ),
-        );
-        if (isset($this->auth)) {
-            array_push($http['header'], 'Authorization: ' . $this->auth);
-        }
-        if (isset($this->proxy)) {
-            $http['proxy'] = $this->proxy;
-        }
+		if (isset($options['headers'])) {
+			foreach ($options['headers'] as $k => $v) {
+				array_push($headers, "$k: $v");
+			}
+		}
 
-        if (isset($this->headers) && count($this->headers) > 0) {
-            foreach ($this->headers as $k => $v) {
-                array_push($http['header'], "$k: $v");
-            }
-        }
+		if (isset($options['params']) && count($options['params']) > 0) {
+			$url .= '?' . http_build_query($options['params'], null, '&', PHP_QUERY_RFC3986);
+		}
 
-        if (isset($options['headers'])) {
-            foreach ($options['headers'] as $k => $v) {
-                array_push($http['header'], "$k: $v");
-            }
-        }
-        if (isset($options['params']) && count($options['params']) > 0) {
-            $url .= '?' . http_build_query($options['params'], null, '&', PHP_QUERY_RFC3986);
-        }
+		$curl = curl_init();
+		$copt = array(
+			CURLOPT_URL => $url,
+			CURLOPT_RETURNTRANSFER => true,
+			CURLOPT_ENCODING => '',
+			CURLOPT_MAXREDIRS => 10,
+			CURLOPT_TIMEOUT => 0,
+			CURLOPT_FOLLOWLOCATION => true,
+			CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
+			CURLOPT_CUSTOMREQUEST => $method,
+			CURLOPT_HTTPHEADER => $headers,
+		);
 
-        if (($method === 'PUT' || $method === 'POST') && isset($options['content'])) {
-            $http['content'] = $options['content'];
-            if (is_string($options['content'])) {
-                array_push($http['header'], 'Content-length: ' . strlen($options['content']));
-            }
-        }
+		if (($method === 'PUT' || $method === 'POST') && isset($options['content'])) {
+			$copt[CURLOPT_POSTFIELDS] = $options['content'];
+		}
 
-        $success = false;
+		curl_setopt_array($curl, $copt);
+		$content = curl_exec($curl);
 
-        //
-        // errors from fopen are reported to PHP as E_WARNING which prevents us
-        // from getting a reasonable message, so set an error handler here for
-        // the immediate call to turn it into an exception, and then restore
-        // normal handling
-        //
-        set_error_handler(
-            function ($errno, $errstr, $errfile, $errline, array $errcontext) {
-                // "!== false" is intentional. strpos() can return 0, which is falsey, but returning
-                // 0 matches our "true" condition. Using strict equality to avoid that confusion.
-                if ($errno == E_NOTICE && strpos($errstr, 'Array to string conversion') !== false) {
-                    // The way HHVM handles array comparison results in a Notice being raised in fopen(),
-                    // but that's expected here and won't affect functionality. We don't want to throw
-                    // those Notices as Errors. Checking if this is a Notice before looking at the
-                    // contents of the string to hopefully minimize any performance impact here.
-                    // See https://github.com/facebook/hhvm/issues/1561 for the "won't fix" from HHVM.
+		if (!curl_errno($curl)) {
+			$metadata = curl_getinfo($curl);
+			$response = $this->_parseCurlMetadata($metadata, $options);
 
-                    return true;
-                }
+			//
+			// keep a copy of the raw content, the methods expecting
+			// an LRS response may handle the content, for instance
+			// querying statements takes the returned value and converts
+			// it to Statement objects (really StatementsResult but who
+			// is counting), etc. but a user may want the original raw
+			// returned content untouched, do the same with the metadata
+			// because it feels like a good practice
+			//
+			$response['_content']  = $content;
+			$response['_metadata'] = $metadata;
 
-                throw new \ErrorException($errstr, 0, $errno, $errfile, $errline);
-            }
-        );
+			$success = false;
+			if (($response['status'] >= 200 && $response['status'] < 300) || ($response['status'] === 404 && isset($options['ignore404']) && $options['ignore404'])) {
+				$success = true;
+			}
+			elseif ($response['status'] >= 300 && $response['status'] < 400) {
+				throw new \Exception("Unsupported status code: " . $response['status'] . " (LRS should not redirect)");
+			}
 
-        $fp = null;
-        $response = null;
+			return new LRSResponse($success, $content, $response);
 
-        try {
-            $context = stream_context_create(array( 'http' => $http ));
-            $fp = fopen($url, 'rb', false, $context);
+		} else {
+			throw new \Exception("Request failed: $url");
+		}
 
-            if (! $fp) {
-                $content = "Request failed: $php_errormsg";
-            }
-        }
-        catch (\ErrorException $ex) {
-            $content = "Request failed: $ex";
-        }
+	}
 
-        restore_error_handler();
+	private function _parseCurlMetadata($metadata) {
+		$result = array();
 
-        if ($fp) {
-            $metadata = stream_get_meta_data($fp);
-            $content  = stream_get_contents($fp);
+		$result['status'] = intval($metadata['http_code']);
 
-            $response = $this->_parseMetadata($metadata, $options);
+		//
+		// pull out whitelisted headers
+		//
+		foreach (self::$whitelistedHeaders as $header => $prop) {
+			foreach ($metadata as $key => $val) {
+				if (stripos($key, $header) === 0) {
+					$result['headers'][$prop] = ltrim($val);
+					break;
+				}
+			}
+		}
 
-            //
-            // keep a copy of the raw content, the methods expecting
-            // an LRS response may handle the content, for instance
-            // querying statements takes the returned value and converts
-            // it to Statement objects (really StatementsResult but who
-            // is counting), etc. but a user may want the original raw
-            // returned content untouched, do the same with the metadata
-            // because it feels like a good practice
-            //
-            $response['_content']  = $content;
-            $response['_metadata'] = $metadata;
+		// TODO: handle content type stripping the charset:
+		if (isset($result['headers']['contentType'])) {
+			$contentType_parts = explode(';', $result['headers']['contentType']);
 
-            //
-            // Content-Type won't be set in the case of a 204 (and potentially others)
-            //
-            if (isset($response['headers']['contentType']) && $response['headers']['contentType'] === "multipart/mixed") {
-                $content = $this->_parseMultipart($response['headers']['contentTypeBoundary'], $content);
-            }
+			$result['headers']['contentType'] = $contentType_parts[0];
+			if (isset($contentType_parts[1]) && preg_match('/^charset/', $contentType_parts[1])) {
+				$result['headers']['contentTypeCharset'] = ltrim($contentType_parts[1]);
+			}
+		}
 
-            if (($response['status'] >= 200 && $response['status'] < 300) || ($response['status'] === 404 && isset($options['ignore404']) && $options['ignore404'])) {
-                $success = true;
-            }
-            elseif ($response['status'] >= 300 && $response['status'] < 400) {
-                $content = "Unsupported status code: " . $response['status'] . " (LRS should not redirect)";
-            }
-        }
+		return $result;
+	}
 
-        return new LRSResponse($success, $content, $response);
-    }
 
     private function _parseMetadata($metadata) {
         $result = array();
